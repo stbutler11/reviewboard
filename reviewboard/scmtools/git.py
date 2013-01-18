@@ -419,6 +419,15 @@ class GitClient(SCMClient):
         url = url.replace("<revision>", revision)
         url = url.replace("<filename>", urllib_quote(path))
         return url
+        
+    def _fetch_head(self):
+        p = self._run_git(['--git-dir=%s' % self.git_dir, 'fetch',
+                           '--all'])
+        contents = p.stdout.read()
+        errmsg = p.stderr.read()
+        failure = p.wait()
+        if failure:
+            logging.error("Error fetching %s" % errmsg)
 
     def _cat_file(self, path, revision, option):
         """
@@ -438,7 +447,16 @@ class GitClient(SCMClient):
         contents = p.stdout.read()
         errmsg = p.stderr.read()
         failure = p.wait()
-
+        
+        # Let's try and fetch the head if there is a failure
+        if failure:
+            self._fetch_head()
+        # And try again
+        p = self._run_git(['--git-dir=%s' % self.git_dir, 'cat-file',
+                           option, commit])
+        contents = p.stdout.read()
+        errmsg = p.stderr.read()
+        failure = p.wait()
         if failure:
             if errmsg.startswith("fatal: Not a valid object name"):
                 raise FileNotFoundError(commit)
